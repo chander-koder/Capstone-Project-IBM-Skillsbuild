@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Penerbitan Paspor Baru</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <!-- Papa Parse CDN (CSV parser) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT: '#1d4ed8', light: '#3b82f6', dark: '#1e3a8a' },
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+
+  <!-- ===== HEADER ===== -->
+  <header class="bg-brand-dark text-white shadow-md">
+    <div class="max-w-screen-xl mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div>
+        <h1 class="text-xl font-bold tracking-tight">🛂 Dashboard Penerbitan Paspor Baru</h1>
+        <p class="text-blue-200 text-sm mt-0.5">Data Direktorat Jenderal Imigrasi Indonesia</p>
+      </div>
+      <div id="period-badge" class="text-xs bg-blue-800 text-blue-100 px-3 py-1.5 rounded-full font-medium self-start sm:self-center">
+        Memuat data…
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="max-w-screen-xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- Loading / Error state -->
+    <div id="loading-state" class="flex flex-col items-center justify-center py-20 text-gray-500 space-y-3">
+      <div class="loader"></div>
+      <p class="text-sm">Memuat data CSV…</p>
+    </div>
+    <div id="error-state" class="hidden bg-red-50 border border-red-200 rounded-xl p-6 text-center text-red-700">
+      <p class="font-semibold text-lg">⚠️ Gagal memuat data</p>
+      <p id="error-message" class="mt-1 text-sm"></p>
+      <p class="mt-2 text-xs text-red-500">Pastikan dashboard dijalankan melalui server lokal:<br>
+        <code class="bg-red-100 px-2 py-0.5 rounded">python -m http.server 8000</code> lalu buka
+        <code class="bg-red-100 px-2 py-0.5 rounded">http://localhost:8000</code>
+      </p>
+    </div>
+
+    <!-- Dashboard content (hidden until data loads) -->
+    <div id="dashboard-content" class="hidden space-y-6">
+
+      <!-- ===== FILTER PANEL ===== -->
+      <section aria-label="Panel Filter" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div class="flex flex-wrap items-end gap-4">
+          <!-- Tahun -->
+          <div class="filter-group">
+            <label for="filter-tahun" class="filter-label">Tahun</label>
+            <select id="filter-tahun" class="filter-select" aria-label="Filter Tahun">
+              <option value="">Semua</option>
+            </select>
+          </div>
+          <!-- Bulan -->
+          <div class="filter-group">
+            <label for="filter-bulan" class="filter-label">Bulan</label>
+            <select id="filter-bulan" class="filter-select" aria-label="Filter Bulan">
+              <option value="">Semua</option>
+            </select>
+          </div>
+          <!-- Kantor Wilayah -->
+          <div class="filter-group flex-1 min-w-[200px]">
+            <label for="filter-kanwil" class="filter-label">Kantor Wilayah</label>
+            <select id="filter-kanwil" class="filter-select" aria-label="Filter Kantor Wilayah">
+              <option value="">Semua</option>
+            </select>
+          </div>
+          <!-- Kelompok Usia -->
+          <div class="filter-group">
+            <label for="filter-usia" class="filter-label">Kelompok Usia</label>
+            <select id="filter-usia" class="filter-select" aria-label="Filter Kelompok Usia">
+              <option value="">Semua</option>
+            </select>
+          </div>
+          <!-- Reset -->
+          <button id="btn-reset" class="reset-btn" aria-label="Reset semua filter">
+            ↺ Reset Filter
+          </button>
+        </div>
+      </section>
+
+      <!-- ===== KPI CARDS ===== -->
+      <section aria-label="Kartu KPI" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Total Paspor -->
+        <div class="kpi-card">
+          <span class="kpi-icon">📋</span>
+          <div>
+            <p class="kpi-label">Total Paspor Baru</p>
+            <p id="kpi-total" class="kpi-value">—</p>
+          </div>
+        </div>
+        <!-- Rata-rata per Bulan -->
+        <div class="kpi-card">
+          <span class="kpi-icon">📅</span>
+          <div>
+            <p class="kpi-label">Rata-rata per Bulan</p>
+            <p id="kpi-avg" class="kpi-value">—</p>
+          </div>
+        </div>
+        <!-- Kantor Teratas -->
+        <div class="kpi-card">
+          <span class="kpi-icon">🏢</span>
+          <div>
+            <p class="kpi-label">Kantor Wilayah Teratas</p>
+            <p id="kpi-top-kanwil" class="kpi-value text-base leading-tight">—</p>
+            <p id="kpi-top-kanwil-val" class="kpi-sub">—</p>
+          </div>
+        </div>
+        <!-- Kelompok Usia Teratas -->
+        <div class="kpi-card">
+          <span class="kpi-icon">👤</span>
+          <div>
+            <p class="kpi-label">Kelompok Usia Teratas</p>
+            <p id="kpi-top-usia" class="kpi-value">—</p>
+            <p id="kpi-top-usia-val" class="kpi-sub">—</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== CHARTS ROW 1: Tren + Top Kanwil ===== -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Tren Bulanan -->
+        <div class="chart-card">
+          <h2 class="chart-title">Tren Penerbitan Bulanan</h2>
+          <div class="chart-container" style="height:280px;">
+            <canvas id="chart-tren" aria-label="Grafik tren penerbitan paspor per bulan"></canvas>
+          </div>
+        </div>
+        <!-- Top 10 Kantor Wilayah -->
+        <div class="chart-card">
+          <h2 class="chart-title">Top 10 Kantor Wilayah</h2>
+          <div class="chart-container" style="height:320px;">
+            <canvas id="chart-kanwil" aria-label="Grafik polar area top kantor wilayah berdasarkan jumlah paspor"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== CHARTS ROW 2: Kelompok Usia + Donat ===== -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Paspor per Kelompok Usia (bar) -->
+        <div class="chart-card">
+          <h2 class="chart-title">Jumlah Paspor per Kelompok Usia</h2>
+          <div class="chart-container" style="height:280px;">
+            <canvas id="chart-usia-bar" aria-label="Grafik batang paspor per kelompok usia"></canvas>
+          </div>
+        </div>
+        <!-- Donat Kelompok Usia -->
+        <div class="chart-card flex flex-col items-center">
+          <h2 class="chart-title w-full">Komposisi Kelompok Usia</h2>
+          <div class="chart-container w-full" style="height:280px;">
+            <canvas id="chart-usia-donut" aria-label="Grafik donat komposisi kelompok usia"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== DATA TABLE ===== -->
+      <section aria-label="Tabel Rincian Data" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h2 class="font-semibold text-gray-700">Tabel Rincian Data</h2>
+          <div class="flex items-center gap-3 text-sm text-gray-500">
+            <span id="table-row-count">— baris</span>
+            <span id="table-period-label" class="text-xs bg-gray-100 px-2 py-1 rounded">—</span>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div id="table-empty" class="hidden py-12 text-center text-gray-400 text-sm">
+          Tidak ada data yang sesuai dengan filter saat ini.
+        </div>
+
+        <!-- Table wrapper -->
+        <div id="table-wrapper" class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-600 uppercase text-xs tracking-wide">
+              <tr>
+                <th class="px-4 py-3 text-left">Kantor Wilayah</th>
+                <th class="px-4 py-3 text-center">Tahun</th>
+                <th class="px-4 py-3 text-left">Bulan</th>
+                <th class="px-4 py-3 text-left">Kelompok Usia</th>
+                <th class="px-4 py-3 text-right">Jumlah Paspor</th>
+              </tr>
+            </thead>
+            <tbody id="table-body" class="divide-y divide-gray-100">
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div id="pagination" class="px-4 py-3 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm text-gray-500">
+          <span id="pagination-info">— hingga — dari — baris</span>
+          <div class="flex items-center gap-1">
+            <button id="btn-first" class="pag-btn" aria-label="Halaman pertama">«</button>
+            <button id="btn-prev" class="pag-btn" aria-label="Halaman sebelumnya">‹</button>
+            <span id="pagination-pages" class="flex gap-1"></span>
+            <button id="btn-next" class="pag-btn" aria-label="Halaman berikutnya">›</button>
+            <button id="btn-last" class="pag-btn" aria-label="Halaman terakhir">»</button>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- end #dashboard-content -->
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="mt-10 border-t border-gray-200 py-4 text-center text-xs text-gray-400">
+    Dashboard Penerbitan Paspor Baru &mdash; Sumber: Direktorat Jenderal Imigrasi &nbsp;|&nbsp;
+    Data: Januari 2025 – Maret 2026
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
